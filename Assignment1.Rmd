@@ -1,0 +1,191 @@
+---
+title: "Practical Machine Learning Assignment"
+author: "Dave Heaton"
+date: "22 February 2019"
+output: html_document
+---
+
+```{r wdAndSetup, echo=FALSE}
+setwd("C:/Users/dave_/OneDrive/GitHub/Coursera/Practical Machine Learning/PracticalMachineLearningAssignment1")
+```
+
+```{r loadLibs, include=FALSE}
+# Load Required Libraries
+library(randomForest)
+library(caret)
+library(dplyr)
+```
+## Executive Summary
+A data set has been collected in which 6 participants were asked to perform weight lifting exercises a number of different ways, including performing the exercise correctly, and then performing the exercise incorrectly. This data was captured using a multitude of sensors and each exercise type was classified (A-E). The intention of this analysis is to develop a classification model which will accurately translate the sensor data into a correct interpretation of the exercise. After some data cleansing, this analysis will be carried out by using a training set of data (to be split into subsets of train and test data) in order to develop a model. This model will then be used against the observations in the final test set and will be scored on Coursera.
+
+## Get the data
+There are two files that we will use for this analysis, the first is the pml-training data which is a CSV:
+
+* https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The second file is what we will use for the second part of the assignment, once the model is developed and is the testing data:
+
+* https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The people who have collected this data kindly allow its reuse for any purpose (citation at end of document), this data set and additional information can be found at:
+
+* http://groupware.les.inf.puc-rio.br/har
+
+
+First step -  load the data into R:
+
+```{r load data}
+# Training Data
+training <- read.csv("pml-training.csv")
+#Testing Data
+testing <- read.csv("pml-testing.csv")
+```
+
+Lets quickly look at the dimension of the two data sets:
+```{r dimensions}
+# Training Dimensions
+dim(training)
+# Testing Dimensions
+dim(testing)
+```
+
+We can see that the training set is made up of 19,622 observations of 160 variables and the testing data is made up of the 20 observations we will use in the final section of the assignment, again across 160 variables.
+
+## Tidying the data
+The first thing to check is the structure of the data:
+
+```{r structure}
+str(training)
+```
+
+Despite the fact the data appears fairly clean and well structured, we can see that some of the columns have missing data (and as predictive models do not deal well with NA values) we need to decide if we need to exclude them or populate them using imputation of some sort. In order to do this, we will populate a matrix using a for loop to detect the extent of the missing values for each column (too much work to do manually):
+
+```{r checkNA}
+# Combine the two sets to check all columns for NA values so that we can ensure we are able to effectively run the modeling
+
+# The last col is different so ignore this (classifier in training and id in test)
+combo <- rbind(training[,-160], testing[,-160])
+
+#Get the no of cols to iterate
+cols <- ncol(combo)
+
+# Create a matrix ready to take input of for loop
+output <- matrix(ncol=2,nrow = cols)
+
+# Loop through the columns to find the columns with >0 NA rows
+for (i in 1:ncol(combo)) {
+        
+        j <- sum(is.na(combo[,i]))
+        
+        if (sum(is.na(combo[,i]))) {
+                
+                output[i,] <- c(i,j)
+                
+        } else {
+               output[i,] <- c(0,0)
+        }
+        
+        output <- as.data.frame(output)
+        
+}
+
+# Show a summary of the missing data for columns with at least 1 NA
+nrow(output[output$V1 >0,])
+# Stat summary
+summary(output[output$V1 >0,]$V2)
+```
+
+We can see from this set of summaries that there are `r nrow(output[output$V1 >0,])` columns with a median of `r format(as.integer(summary(output[output$V1 >0,]$V2)[3],0), big.mark = ",")` missing values (20's for the testing set which covers all of the observations), and so we will simply remove them from the analysis (both training and testing) as there is not enough information to populate them, and so they cannot be used as predictors in the model.
+
+```{r removeNA cols}
+# Remove the columns with high proportion of NA values from train and test sets
+training <- training[,-output$V1]
+
+testing <- testing[,-output$V1]
+```
+In order to further clean the data set, the first 6 columns of data appear to be details regarding the individuals rather than specific to each observation and so we will also remove these to leave us with 54 variables, with "classe"" as our outcome variable.
+
+```{r remove recs}
+training <- training[,-c(1:6)]
+testing <- testing[,-c(1:6)]
+```
+
+Now that the data is much cleaner, we can begin to set up in order to start modeling.
+
+## Further data splits and feature selection
+Given that the final test set is limited to 20 records and is effectively a held out set, it would be practical to split the training set into two data sets, call them "train1" and "test1" which will allow additional layers of validating the prediction algorithm. Once we have split the data we will run a random forest in the first instance on all of the variables and use variable importance measure functions in order to try and develop the best possible model. Then we will apply this model to the "test" data, and then all being well apply this to the final 20 observations.
+
+```{r featureSelection, cache=TRUE}
+
+# Set the seed for reproducible resulta
+set.seed(26598)
+
+# Create partition and split traind and test 70 - 30 percent
+inTrain <- createDataPartition(training$classe, p = 0.7, list = FALSE)
+train1 <- training[inTrain,]
+test1 <- training[-inTrain,]
+
+# Fit random forest on all variables in order to aid feature selection
+rfFit0 <- randomForest(classe ~., data = train1, importance = TRUE)
+```
+
+
+```{r varImportance}
+# Plot a Variable Importance Plot
+varImpPlot(rfFit0)
+```
+
+On this basis we can see there are possibly 10 variables that stand out before the remainder fall into a more vertical pattern based on the "Mean Decrease Gini" chart, these are:
+
+* Num Window,
+* Roll Belt,
+* Yaw Belt,
+* Pitch Forearm,
+* Magnet Dumbbell Z,
+* Pitch Belt,
+* Magnet Dumbbell Y,
+* Roll Forearm,
+* Magnet Dumbbell X,
+* Accell Dumbbell Y
+
+
+We will run a quick correlation on each of these to see if there are any issues with collinearity which may have a negative impact on our final model:
+
+```{r correlateVars}
+featuresCor <- train1 %>%
+        select(num_window, roll_belt, yaw_belt, pitch_forearm, magnet_dumbbell_z, pitch_belt, magnet_dumbbell_y, roll_forearm, magnet_dumbbell_x, accel_dumbbell_y)
+cor(featuresCor)
+```
+
+This shows that there is a very high correlation between yaw_belt and roll_belt, and so we remove yaw_belt from the analysis as this came second in the importance (based on mean decrease in Gini) to roll_belt.
+
+## Fitting the model
+The next step is to now fit the actual model, with these 9 remaining features, predict this against our self made test set and produce a confusion matrix in order to quantify the expected error on unseen data.
+
+```{r fitModel1, cache=TRUE}
+set.seed(546886)
+rfFit1 <- randomForest(classe ~ num_window + roll_belt + pitch_forearm + 
+                               magnet_dumbbell_z + pitch_belt + magnet_dumbbell_y +
+                               roll_forearm + magnet_dumbbell_x + accel_dumbbell_y,
+                       data = train1, 
+                       importance = TRUE)
+
+preds <- predict(rfFit1, test1[,-54])
+
+confusionMatrix(preds, test1$classe)
+```
+
+Based on the above confusion matrix, it would appear that the model is extremely adept at predicting the activity based on an accuracy of .9985 (0.9917 - 0.9993) and p < 0.001. This seems like a very good classification model and so the final stage is to map this against the completely unseen data in the original test set (20 cases).
+
+## Modeling against the test set
+In order to determine the outcome against the thus far unseen test data, we will use the model "rfFit1" to predict the"classe" of exercise being carried out. This will then be submitted to Coursera in the second part of this assignment.
+
+```{r finalPrediction}
+finalPred <- predict(rfFit1, newdata = testing)
+finalPred
+```
+
+### Citation 
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz5gIGs6X5o
