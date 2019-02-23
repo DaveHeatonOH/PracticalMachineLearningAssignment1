@@ -175,7 +175,14 @@ preds <- predict(rfFit1, test1[,-54])
 confusionMatrix(preds, test1$classe)
 ```
 
-Based on the above confusion matrix, it would appear that the model is extremely adept at predicting the activity based on an accuracy of .9985 (0.9917 - 0.9993) and p < 0.001. This seems like a very good classification model and so the final stage is to map this against the completely unseen data in the original test set (20 cases).
+
+```{r errorrate}
+sum(preds != test1$classe) / length(test1$classe) 
+```
+
+Based on the above confusion matrix, it would appear that the model is extremely adept at predicting the activity based on an accuracy of .9985 (0.9917 - 0.9993) and p < 0.001. The out of sample error rate is 0.0015 based on the 1 - accuracy. 
+
+This seems like a very good classification model and so the final stage is to map this against the completely unseen data in the original test set (20 cases).
 
 ## Modeling against the test set
 In order to determine the outcome against the thus far unseen test data, we will use the model "rfFit1" to predict the"classe" of exercise being carried out. This will then be submitted to Coursera in the second part of this assignment.
