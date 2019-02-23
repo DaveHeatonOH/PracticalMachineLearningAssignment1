@@ -489,7 +489,7 @@ confusionMatrix(preds, test1$classe)</code></pre>
 ## Balanced Accuracy      1.0000   0.9994   0.9989   0.9968   0.9995</code></pre>
 <pre class="r"><code>sum(preds != test1$classe) / length(test1$classe) </code></pre>
 <pre><code>## [1] 0.001529312</code></pre>
-<p>Based on the above confusion matrix, it would appear that the model is extremely adept at predicting the activity based on an accuracy of .9985 (0.9917 - 0.9993) and p &lt; 0.001. The out of sample error rate is 0.0</p>
+<p>Based on the above confusion matrix, it would appear that the model is extremely adept at predicting the activity based on an accuracy of .9985 (0.9917 - 0.9993) and p &lt; 0.001. The out of sample error rate is 0.0015 based on the 1 - accuracy caclulation.</p>
 <p>This seems like a very good classification model and so the final stage is to map this against the completely unseen data in the original test set (20 cases).</p>
 </div>
 <div id="modeling-against-the-test-set" class="section level2">
